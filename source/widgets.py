@@ -1,13 +1,11 @@
 # *- coding: utf-8 -*-
 from pathlib import Path
-from typing import Optional, Any, List
+from typing import Optional, List
 
-from PyQt5.QtCore import QDir, pyqtSignal, QModelIndex, QObject, Qt, QAbstractItemModel, QLocale
+from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel, QListWidget, QPushButton, \
-    QSpinBox, QDoubleSpinBox, QLineEdit, QSizePolicy, QFileDialog, QTabWidget, QListWidgetItem, QGridLayout, \
-    QTableWidget, QHeaderView, QTableWidgetItem, QStyledItemDelegate, QStyleOptionViewItem, QAction, QDialog, \
-    QSpacerItem
+    QLineEdit, QSizePolicy, QFileDialog, QTabWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QAction, QDialog
 
 from source.message import InfoMessage, QuestionMessage
 from source.model import AppModel, KnowledgeBase, Sign, Hypothesis
@@ -99,93 +97,106 @@ class AppMainWindow(QMainWindow):
         self.resize(800, 600)
 
 
+class SignValueTable(QTableWidget):
+    remove_sign_value = pyqtSignal(int, int)  # h_id, sign_id
+    change_sign_value = pyqtSignal(int, int, str, str)  # h_id, sign_id, p_pos, p_neg
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.h: Optional[Hypothesis] = None
+        self.fill_flag = False
+        self.setColumnCount(4)
+        self.setHorizontalHeaderLabels(['sign_id', 'Признак', 'p+', 'p-'])
+        self.horizontalHeader().setStretchLastSection(True)
+        self.verticalHeader().setVisible(False)
+        self.setColumnHidden(0, True)
+        self.resizeColumnToContents(2)
+        self.resizeColumnToContents(3)
+
+        self.delete_link_action = QAction("Удалить связь", self)
+        self.delete_link_action.setShortcut('Ctrl+D')
+        self.addAction(self.delete_link_action)
+
+        self.delete_link_action.triggered.connect(self.confirm_delete)
+        self.cellChanged.connect(self.emit_change)
+
+    def emit_change(self, row, col):
+        if not self.fill_flag and self.h:
+            h_id = self.h.id
+            sign_id = int(self.item(row, 0).text())
+            p_pos = self.item(row, 2).text()
+            p_neg = self.item(row, 3).text()
+            self.change_sign_value.emit(h_id, sign_id, p_pos, p_neg)
+
+    def confirm_delete(self):
+        if self.hasFocus() and self.h and len(self.h.signs):
+            row = self.currentRow()
+            h_id = self.h.id
+            sign_id = int(self.item(row, 0).text())
+            name = self.item(row, 1).text()
+            p_pos = self.item(row, 2).text()
+            p_neg = self.item(row, 3).text()
+            message = QuestionMessage('Удалить', f'Удалить связь <{name}> <{p_pos}> <{p_neg}>?')
+            if message.exec_() == message.AcceptRole:
+                self.removeRow(row)
+                self.remove_sign_value.emit(h_id, sign_id)
+                # self.kb.signs.remove(self.kb.signs[row])
+
+    def fill(self, kb: KnowledgeBase, h: Hypothesis):
+        self.fill_flag = True
+        self.h = h
+        self.clearContents()
+        self.setRowCount(len(h.signs))
+        for i, (s, sv) in enumerate(kb.get_links(h)):
+            self.setItem(i, 0, QTableWidgetItem(str(sv.sign_id)))
+            self.setItem(i, 1, QTableWidgetItem(s.name))
+            self.item(i, 1).setFlags(Qt.ItemIsSelectable| Qt.ItemIsEnabled)
+            self.setItem(i, 2, QTableWidgetItem(str(sv.p_pos)))
+            self.setItem(i, 3, QTableWidgetItem(str(sv.p_neg)))
+        self.fill_flag = False
+
+
 class LinkHypothesisDialog(QDialog):
     def __init__(self, app_model: AppModel, kb: KnowledgeBase):
         super().__init__()
+        self.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.app_model: AppModel = app_model
         self.kb: KnowledgeBase = kb
         self.h: Optional[Hypothesis] = None
         self.in_signs: List[Sign] = list()
         self.out_signs: List[Sign] = list()
         self.setup_ui()
-        self.setup_actions()
         self.fill_hypos_list()
         self.setup_signals()
-
-    # def set_values(self, item):
-    #     if self.h:
-    #         row = self.included_signs_list.indexFromItem(item).row()
-    #         # self.p_pos_spin.setValue(self.h.signs[i].p_pos)
-    #         # self.p_neg_spin.setValue(self.h.signs[i].p_neg)
-
-    def exclude_sign(self):
-        if self.h:
-            row = self.included_signs_table.currentRow()
-            print(row)
-            # s = self.in_signs[self.included_signs_list.indexFromItem(item).row()]
-            s = self.in_signs[row]
-            self.h.remove_sign(s)
-            self.fill_signs(self.hypos_list.selectedItems()[0])
 
     def new_include_sign(self, item):
         if self.h:
             s = self.out_signs[self.unincluded_signs_list.indexFromItem(item).row()]
             self.h.add_sign(s)
-            self.fill_signs(self.hypos_list.selectedItems()[0])
-
-    def change_sign_link_values(self, row, col):
-        table = self.included_signs_table
-        s = self.in_signs[row]
-        sv = [sv for sv in self.h.signs if sv.sign_id == s.id][0]
-        text = table.item(row, col).text()
-
-        if col == 1:
-            try:
-                value = float(text.replace(',', '.'))
-            except ValueError:
-                table.item(row, col).setText(str(sv.p_pos))
-                return
-            sv.p_pos = value
-        elif col == 2:
-            try:
-                value = float(text.replace(',', '.'))
-            except ValueError:
-                table.item(row, col).setText(str(sv.p_neg))
-                return
-            sv.p_neg = value
+            self.fill_signs(self.h)
 
     def fill_hypos_list(self):
         self.hypos_list.clear()
         self.hypos_list.addItems([h.name for h in self.kb.hypos])
 
-    def fill_signs(self, item):
-        self.h = self.kb.hypos[self.hypos_list.indexFromItem(item).row()]
-        self.in_signs = self.kb.hypo_signs(self.h)
-        self.out_signs = self.kb.hypo_unsign(self.h)
+    def fill_signs(self, h: Hypothesis):
+        self.h = h
+        self.in_signs = self.kb.get_signs_in_hypothesis(self.h)
+        self.out_signs = self.kb.get_signs_out_hypothesis(self.h)
 
         self.unincluded_signs_list.clear()
         self.unincluded_signs_list.addItems([s.name for s in self.out_signs])
 
-        self.included_signs_table.clearContents()
-        self.included_signs_table.setRowCount(len(self.h.signs))
-        for i, sv in enumerate(self.h.signs):
-            self.included_signs_table.setItem(i, 0, QTableWidgetItem(
-                [s.name for s in self.in_signs if s.id == sv.sign_id][0]))
-            self.included_signs_table.setItem(i, 1, QTableWidgetItem(str(sv.p_pos)))
-            self.included_signs_table.setItem(i, 2, QTableWidgetItem(str(sv.p_neg)))
+        self.included_signs_table.fill(self.kb, self.h)
 
     def setup_signals(self):
-        self.hypos_list.itemClicked.connect(self.fill_signs)
+        self.hypos_list.itemClicked.connect(
+            lambda item: self.fill_signs(self.kb.hypos[self.hypos_list.indexFromItem(item).row()]))
         self.unincluded_signs_list.itemDoubleClicked.connect(self.new_include_sign)
-        self.included_signs_table.cellChanged.connect(lambda row, col: self.kb.change_sign_link_values(
-            row, col, self.included_signs_table.item(row, col).text()))
-        self.included_signs_table.cellChanged.connect(self.change_sign_link_values)
-        self.delete_action.triggered.connect(self.exclude_sign)
-
-    def setup_actions(self):
-        self.delete_action = QAction(self)
-        self.delete_action.setShortcut('Ctrl+D')
-        self.addAction(self.delete_action)
+        self.included_signs_table.change_sign_value.connect(self.kb.change_link)
+        self.included_signs_table.change_sign_value.connect(lambda: self.fill_signs(self.h))
+        self.included_signs_table.remove_sign_value.connect(self.kb.delete_link)
+        self.included_signs_table.remove_sign_value.connect(lambda: self.fill_signs(self.h))
 
     def setup_ui(self):
         self.overview_layout = QHBoxLayout(self)
@@ -198,15 +209,11 @@ class LinkHypothesisDialog(QDialog):
         self.overview_layout.addLayout(self.hypos_layout)
         # 2
         self.include_label = QLabel('Входящие признаки')
-        self.included_signs_table = table = QTableWidget(self)
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(['Признак', 'p+', 'p-'])
-        table.horizontalHeader().setStretchLastSection(True)
-        table.verticalHeader().setVisible(False)
+        self.included_signs_table = SignValueTable(self)
 
         self.include_layout = QVBoxLayout(self)
         self.include_layout.addWidget(self.include_label)
-        self.include_layout.addWidget(table)
+        self.include_layout.addWidget(self.included_signs_table)
         self.overview_layout.addLayout(self.include_layout)
         # 3
         self.exclude_label = QLabel('Не входящие признаки')
@@ -228,12 +235,8 @@ class SignTable(QTableWidget):
         self.setHorizontalHeaderLabels(['id', 'Признак', 'Вопрос'])
         self.horizontalHeader().setStretchLastSection(True)
         self.verticalHeader().setVisible(False)
+        self.setColumnHidden(0, True)
 
-        self.delete_action = QAction(self)
-        self.delete_action.setShortcut('Ctrl+D')
-        self.addAction(self.delete_action)
-
-        self.delete_action.triggered.connect(self.confirm_delete)
         self.cellChanged.connect(self.emit_change)
 
     def emit_change(self, row, col):
@@ -244,7 +247,7 @@ class SignTable(QTableWidget):
             self.change_sign.emit(sign_id, name, question)
 
     def confirm_delete(self):
-        if self.hasFocus():
+        if self.hasFocus() and self.currentRow() >= 0:
             row = self.currentRow()
             sign_id = int(self.item(row, 0).text())
             name = self.item(row, 1).text()
@@ -253,13 +256,11 @@ class SignTable(QTableWidget):
             if message.exec_() == message.AcceptRole:
                 self.removeRow(row)
                 self.remove_sign.emit(sign_id)
-                # self.kb.signs.remove(self.kb.signs[row])
 
     def fill(self, signs: List[Sign]):
         self.fill_flag = True
-        count = len(signs)
         self.clearContents()
-        self.setRowCount(count)
+        self.setRowCount(len(signs))
         for i, s in enumerate(signs):
             self.setItem(i, 0, QTableWidgetItem(str(s.id)))
             self.setItem(i, 1, QTableWidgetItem(s.name))
@@ -278,20 +279,16 @@ class HypothesisTable(QTableWidget):
         self.setHorizontalHeaderLabels(['id', 'Гипотеза', 'Вероятность', 'Описание'])
         self.horizontalHeader().setStretchLastSection(True)
         self.verticalHeader().setVisible(False)
+        self.setColumnHidden(0, True)
 
-        self.delete_action = QAction(self)
-        self.delete_action.setShortcut('Ctrl+D')
-        self.addAction(self.delete_action)
-
-        self.delete_action.triggered.connect(self.confirm_delete)
         self.cellChanged.connect(self.emit_change)
 
     def emit_change(self, row, col):
         if not self.fill_flag:
             hypo_id = int(self.item(row, 0).text())
             name = self.item(row, 1).text()
-            desc = self.item(row, 2).text()
-            p = self.item(row, 3).text()
+            p = self.item(row, 2).text()
+            desc = self.item(row, 3).text()
             self.change_hypothesis.emit(hypo_id, name, desc, p)
 
     def confirm_delete(self):
@@ -299,19 +296,17 @@ class HypothesisTable(QTableWidget):
             row = self.currentRow()
             hypo_id = int(self.item(row, 0).text())
             name = self.item(row, 1).text()
-            desc = self.item(row, 2).text()
-            p = self.item(row, 3).text()
+            p = self.item(row, 2).text()
+            desc = self.item(row, 3).text()
             message = QuestionMessage('Удалить', f'Удалить гипотезу <{name}> <{desc}> <{p}>?')
             if message.exec_() == message.AcceptRole:
                 self.removeRow(row)
                 self.remove_hypothesis.emit(hypo_id)
-                # self.kb.signs.remove(self.kb.signs[row])
 
     def fill(self, hypos: List[Hypothesis]):
         self.fill_flag = True
-        count = len(hypos)
         self.clearContents()
-        self.setRowCount(count)
+        self.setRowCount(len(hypos))
         for i, h in enumerate(hypos):
             self.setItem(i, 0, QTableWidgetItem(str(h.id)))
             self.setItem(i, 1, QTableWidgetItem(h.name))
@@ -328,7 +323,15 @@ class KnowledgeBaseWidget(QWidget):
         index = self.app_model.load_base(self.path)
         self.kb = self.app_model.bases[index]
         self.setup_ui()
-        self.setup_actions()
+
+        # actions
+        self.save_action = QAction("Сохранить базу знаний", self)
+        self.save_action.setShortcut('Ctrl+S')
+        self.addAction(self.save_action)
+
+        self.delete_action = QAction("Удалить", self)
+        self.delete_action.setShortcut('Ctrl+D')
+        self.addAction(self.delete_action)
 
         # fill data
         self.name_input.setText(self.kb.name)
@@ -344,34 +347,14 @@ class KnowledgeBaseWidget(QWidget):
     def open_run_base(self):
         pass
 
-    # def change_hypos(self, row, col):
-    #     text = self.hypos_table.item(row, col).text()
-    #     if col == 1:
-    #         try:
-    #             value = float(text.replace(',', '.'))
-    #         except ValueError:
-    #             self.hypos_table.item(row, col).setText(f'{self.kb.hypos[row].p:.3f}')
-    #             return
-    #     self.kb.change_hypos(row, col, text)
-
-    def setup_actions(self):
-        self.save_action = QAction(self)
-        self.save_action.setShortcut('Ctrl+S')
-        self.addAction(self.save_action)
-        # self.delete_action = QAction(self)
-        # self.delete_action.setShortcut('Ctrl+D')
-        # self.addAction(self.delete_action)
-
     def setup_signals(self):
-        # self.sign_table.cellChanged.connect(lambda row, col: self.kb.change_sign(
-        #     row, col, self.sign_table.item(row, col).text()))
-        # self.hypos_table.cellChanged.connect(self.change_hypos)
-
         # tables signals
-        # self.sign_table.change_sign.connect()
-        # self.sign_table.remove_sign.connect()
-        # self.hypos_table.change_hypothesis.connect()
-        # self.hypos_table.remove_hypothesis.connect()
+        self.sign_table.change_sign.connect(self.kb.change_sign)
+        self.sign_table.change_sign.connect(lambda: self.sign_table.fill(self.kb.signs))
+        self.sign_table.remove_sign.connect(self.kb.delete_sign)
+        self.hypos_table.change_hypothesis.connect(self.kb.change_hypos)
+        self.hypos_table.change_hypothesis.connect(lambda: self.hypos_table.fill(self.kb.hypos))
+        self.hypos_table.remove_hypothesis.connect(self.kb.delete_hypo)
         # buttons clicks
         self.add_sign_button.clicked.connect(lambda: (self.kb.add_sign(), self.sign_table.fill(self.kb.signs)))
         self.add_hypos_button.clicked.connect(lambda: (self.kb.add_hypos(), self.hypos_table.fill(self.kb.hypos)))
@@ -380,7 +363,8 @@ class KnowledgeBaseWidget(QWidget):
         # actions triggers
         self.save_action.triggered.connect(lambda: self.app_model.save_base(self.kb))
         self.save_action.triggered.connect(lambda: InfoMessage('Сохранение', 'База знаний сохранена'))
-        # self.delete_action.triggered.connect(self.confirm_delete)
+        self.delete_action.triggered.connect(self.hypos_table.confirm_delete)
+        self.delete_action.triggered.connect(self.sign_table.confirm_delete)
 
     def setup_ui(self):
         self.h_layout = QHBoxLayout(self)

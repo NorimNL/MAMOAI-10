@@ -1,6 +1,6 @@
 # *- coding: utf-8 -*-
 
-from typing import Optional, Any, List, Set
+from typing import Optional, Any, List, Set, Tuple
 import json
 from pathlib import Path, WindowsPath
 
@@ -54,7 +54,6 @@ class SignValue:
     """
 
     def __init__(self):
-        self.id = 0
         self.sign_id: int = -1
         self._p_pos: float = 0.5
         self._p_neg: float = 0.5
@@ -134,15 +133,16 @@ class Hypothesis:
             except ValueError:
                 return
 
-    def get_link_by_id(self, target_id: int) -> SignValue:
+    def get_link_by_sign_id(self, sign_id: int) -> SignValue:
         for sv in self.signs:
-            if sv.id == target_id:
+            if sv.sign_id == sign_id:
                 return sv
 
-    def add_sign(self, s: Sign):
+    def add_sign(self, s: Sign) -> SignValue:
         sv = SignValue()
         sv.sign_id = s.id
         self.signs.append(sv)
+        return sv
 
     def remove_sign(self, s: Sign):
         for sv in self.signs:
@@ -173,56 +173,69 @@ class KnowledgeBase:
             if s.id == target_id:
                 return s
 
-    def hypo_signs(self, hypo: Hypothesis) -> List[Sign]:
-        sign_value_ids = set([sv.sign_id for sv in hypo.signs])
-        sign_ids = set([s.id for s in self.signs])
-        target_ids = sign_ids & sign_value_ids
-        return list([s for s in self.signs if s.id in target_ids])
+    def get_signs_in_hypothesis(self, h: Hypothesis) -> List[Sign]:
+        return [self.get_sign_by_id(sv.sign_id) for sv in h.signs]
 
-    def hypo_unsign(self, hypo: Hypothesis) -> List[Sign]:
-        sign_value_ids = set([sv.sign_id for sv in hypo.signs])
-        sign_ids = set([s.id for s in self.signs])
-        target_ids = sign_ids - sign_value_ids
-        return list([s for s in self.signs if s.id in target_ids])
+    def get_signs_out_hypothesis(self, h: Hypothesis) -> List[Sign]:
+        return list(set(self.signs) - set(self.get_signs_in_hypothesis(h)))
 
-    def add_hypos(self):
+    def get_links(self, h: Hypothesis) -> List[Tuple[Sign, SignValue]]:
+        return [(self.get_sign_by_id(sv.sign_id), sv) for sv in h.signs]
+
+    def add_hypos(self) -> Hypothesis:
         h = Hypothesis()
         if self.hypos:
             h.id = self.hypos[-1].id + 1
         self.hypos.append(h)
         return h
 
-    def add_sign(self):
+    def add_sign(self) -> Sign:
         s = Sign()
         if self.signs:
             s.id = self.signs[-1].id + 1
         self.signs.append(s)
         return s
 
-    def change_sign(self, row, col, text):
-        sign = self.signs[row]
-        if col == 0:
-            sign.name = text
-        elif col == 1:
-            sign.question = text
-        # AppModel.save_base(self)
+    def change_sign(self, sign_id: int, name: str, question: str) -> Sign:
+        s = self.get_sign_by_id(sign_id)
+        s.name = name
+        s.question = question
+        return s
 
-    def change_hypos(self, row: int, col: int, text):
-        h = self.hypos[row]
-        if col == 0:
-            h.name = text
-        elif col == 1:
-            try:
-                value = float(text.replace(',', '.'))
-                h.p = value
-            except:
-                return
-        elif col == 2:
-            h.desc = text
-        # AppModel.save_base(self)
+    def change_hypos(self, hypo_id: int, name: str, desc: str, p: str) -> Hypothesis:
+        h = self.get_hypothesis_by_id(hypo_id)
+        h.name = name
+        h.desc = desc
+        try:
+            value = float(p.replace(',', '.'))
+            h.p = value
+        except ValueError:
+            return h
+        return h
 
-    def change_sign_link_values(self, row, col, text):
-        pass
+    def change_link(self, h_id: int, sign_id: int, p_pos: str, p_neg: str):
+        h = self.get_hypothesis_by_id(h_id)
+        sv = h.get_link_by_sign_id(sign_id)
+        sv.p_pos = p_pos
+        sv.p_neg = p_neg
+
+    def delete_sign(self, sign_id: int):
+        self.signs.remove(self.get_sign_by_id(sign_id))
+        to_remove = list()
+        for h in self.hypos:
+            for sv in h.signs:
+                if sv.sign_id == sign_id:
+                    to_remove.append(sv)
+            for sv in to_remove:
+                h.signs.remove(sv)
+
+    def delete_hypo(self, hypo_id: int):
+        self.hypos.remove(self.get_hypothesis_by_id(hypo_id))
+
+    def delete_link(self, h_id, sign_id):
+        h = self.get_hypothesis_by_id(h_id)
+        sv = h.get_link_by_sign_id(sign_id)
+        h.signs.remove(sv)
 
 
 class AppModel:
