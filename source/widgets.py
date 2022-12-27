@@ -140,7 +140,6 @@ class SignValueTable(QTableWidget):
             if message.exec_() == message.AcceptRole:
                 self.removeRow(row)
                 self.remove_sign_value.emit(h_id, sign_id)
-                # self.kb.signs.remove(self.kb.signs[row])
 
     def fill(self, kb: KnowledgeBase, h: Hypothesis):
         self.fill_flag = True
@@ -150,17 +149,16 @@ class SignValueTable(QTableWidget):
         for i, (s, sv) in enumerate(kb.get_links(h)):
             self.setItem(i, 0, QTableWidgetItem(str(sv.sign_id)))
             self.setItem(i, 1, QTableWidgetItem(s.name))
-            self.item(i, 1).setFlags(Qt.ItemIsSelectable| Qt.ItemIsEnabled)
+            self.item(i, 1).setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
             self.setItem(i, 2, QTableWidgetItem(str(sv.p_pos)))
             self.setItem(i, 3, QTableWidgetItem(str(sv.p_neg)))
         self.fill_flag = False
 
 
 class LinkHypothesisDialog(QDialog):
-    def __init__(self, app_model: AppModel, kb: KnowledgeBase):
+    def __init__(self, kb: KnowledgeBase):
         super().__init__()
         self.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
-        self.app_model: AppModel = app_model
         self.kb: KnowledgeBase = kb
         self.h: Optional[Hypothesis] = None
         self.in_signs: List[Sign] = list()
@@ -310,9 +308,64 @@ class HypothesisTable(QTableWidget):
         for i, h in enumerate(hypos):
             self.setItem(i, 0, QTableWidgetItem(str(h.id)))
             self.setItem(i, 1, QTableWidgetItem(h.name))
-            self.setItem(i, 2, QTableWidgetItem(f'{h.p:.3f}'))
+            self.setItem(i, 2, QTableWidgetItem(f'{h.init_p:.3f}'))
             self.setItem(i, 3, QTableWidgetItem(h.desc))
         self.fill_flag = False
+
+
+class BaseStateTable(QTableWidget):
+    def __init__(self, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.setColumnCount(4)
+        self.setHorizontalHeaderLabels(['P', 'P min', 'P max', 'Гипотеза'])
+        self.horizontalHeader().setStretchLastSection(True)
+        self.verticalHeader().setVisible(False)
+
+    def fill(self, hypos: List[Hypothesis]):
+        self.clearContents()
+        self.setRowCount(len(hypos))
+        only_read = Qt.ItemIsSelectable | Qt.ItemIsEnabled
+        for i, h in enumerate(hypos):
+            self.setItem(i, 0, QTableWidgetItem(f'{h.init_p:.3f}'))
+            self.setItem(i, 1, QTableWidgetItem(f'{h.p_min:.3f}'))
+            self.setItem(i, 2, QTableWidgetItem(f'{h.p_max:.3f}'))
+            self.setItem(i, 3, QTableWidgetItem(h.name))
+            self.item(i, 0).setFlags(only_read)
+            self.item(i, 1).setFlags(only_read)
+            self.item(i, 2).setFlags(only_read)
+            self.item(i, 3).setFlags(only_read)
+
+
+class RunBaseDialog(QDialog):
+    def __init__(self, kb: KnowledgeBase):
+        super().__init__()
+        self.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
+        self.kb: KnowledgeBase = kb
+        self.setup_ui()
+        self.state_table.fill(self.kb.hypos)
+
+    def setup_ui(self):
+        self.v_layout = QVBoxLayout(self)
+
+        self.question_label = QLabel("Вопрос: как выспаться?", self)
+        self.v_layout.addWidget(self.question_label)
+
+        # Нет - 0   Скорее нет - 1  Не знаю - 2     Скорее да - 3   Да - 4
+        self.input_layout = QHBoxLayout(self)
+        self.no_button = QPushButton('Нет', self)
+        self.p_no_button = QPushButton('Скорее нет', self)
+        self.no_know_button = QPushButton('Не знаю', self)
+        self.p_yes_button = QPushButton('Скорее да', self)
+        self.yes_button = QPushButton('Да', self)
+        self.input_layout.addWidget(self.no_button)
+        self.input_layout.addWidget(self.p_no_button)
+        self.input_layout.addWidget(self.no_know_button)
+        self.input_layout.addWidget(self.p_yes_button)
+        self.input_layout.addWidget(self.yes_button)
+        self.v_layout.addLayout(self.input_layout)
+
+        self.state_table = BaseStateTable(self)
+        self.v_layout.addWidget(self.state_table)
 
 
 class KnowledgeBaseWidget(QWidget):
@@ -341,11 +394,12 @@ class KnowledgeBaseWidget(QWidget):
         self.setup_signals()
 
     def open_links_dialog(self):
-        dialog = LinkHypothesisDialog(self.app_model, self.kb)
+        dialog = LinkHypothesisDialog(self.kb)
         dialog.exec_()
 
     def open_run_base(self):
-        pass
+        dialog = RunBaseDialog(self.kb)
+        dialog.exec_()
 
     def setup_signals(self):
         # tables signals
