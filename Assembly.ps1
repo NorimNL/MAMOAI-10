@@ -1,0 +1,2 @@
+.\venv\Scripts\activate.ps1
+.\venv\Scripts\pyinstaller.exe --clean --windowed --onefile --name="Knowledge Base Constructor" --icon "./source/qtgui/resource/app.ico" main.py --exclude-module PySide2 --exclude-module PySide --exclude-module PyQt4
