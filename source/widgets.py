@@ -1,6 +1,7 @@
 # *- coding: utf-8 -*-
 from pathlib import Path
 from typing import Optional, List
+import copy
 
 from PyQt5.QtCore import pyqtSignal, Qt
 from PyQt5.QtGui import QIcon
@@ -341,17 +342,24 @@ class RunBaseDialog(QDialog):
         super().__init__()
         self.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.kb: KnowledgeBase = kb
-        self.calculator = CalculationProcess(kb.hypos, kb.signs, False)
+        self.kb.reset_hypothesis()
+        self.calculator = CalculationProcess(copy.deepcopy(kb.hypos), copy.deepcopy(kb.signs), False)
         self.setup_ui()
         self.setup_signals()
         self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(self.calculator.current_question).question)
         self.state_table.fill(self.calculator.h_list)
 
     def next_step(self, value: int):
-        self.calculator.step(value, self.calculator.current_question)
-        print(self.calculator.current_question, type(self.calculator.current_question))  # 0
-        print(self.kb.get_sign_by_id(self.calculator.current_question))  # None
-        # self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(self.calculator.current_question).question)
+        question_id = self.calculator.get_first_question()
+        self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(question_id).question)
+        result = self.calculator.step(value, question_id)
+        if result:
+            self.no_button.setDisabled(True)
+            self.p_no_button.setDisabled(True)
+            self.no_know_button.setDisabled(True)
+            self.p_yes_button.setDisabled(True)
+            self.yes_button.setDisabled(True)
+            InfoMessage('Остановка расчета', 'Расчет завершен!')
         self.state_table.fill(self.calculator.h_list)
 
     def setup_signals(self):

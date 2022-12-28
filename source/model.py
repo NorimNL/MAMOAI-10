@@ -142,6 +142,11 @@ class Hypothesis:
     def __repr__(self):
         return f"Hypothesis({self.name}, {self.init_p}, {self.signs})"
 
+    def reset(self):
+        self.p = self.init_p
+        self.p_max = self.init_p
+        self.p_min = self.init_p
+
     @property
     def init_p(self) -> float:
         return self._init_p
@@ -187,12 +192,12 @@ class Hypothesis:
             self.signs.pop(i)
 
     def get_sign_val_by_id(self, sign_id) -> Optional[SignValue]:
-        for s in self.signs:
-            if s.sign_id == sign_id:
-                return s
+        for sv in self.signs:
+            if sv.sign_id == sign_id:
+                return sv
         return
 
-    def count_p(self, answer: bool, sign: SignValue, r=1, log=False):
+    def count_p(self, answer: bool, sign: SignValue, r=1.0, log=False):
         self.p = sign.count_p_by_pos(self.p) if answer else sign.count_p_by_neg(self.p)
         self.p *= r
         if log:
@@ -351,7 +356,8 @@ class CalculationProcess:
     def recount_ps(self, sign_id: int, answer: bool, r: float):
         for h in self.h_list:
             # print(f"Sign ID: {sign_id}")
-            sign_value = h.get_sign_val_by_id(sign_id)
+            # sign_value = h.get_sign_val_by_id(sign_id)
+            sign_value = h.get_link_by_sign_id(sign_id)
             # print(f"Sign value: {sign_value}")
             h.count_p(answer, sign_value, r)
 
@@ -462,6 +468,11 @@ class KnowledgeBase:
         for s in self.signs:
             if s.id == target_id:
                 return s
+
+    def reset_hypothesis(self):
+        for h in self.hypos:
+            h.reset()
+        return self
 
     def get_signs_in_hypothesis(self, h: Hypothesis) -> List[Sign]:
         return [self.get_sign_by_id(sv.sign_id) for sv in h.signs]
