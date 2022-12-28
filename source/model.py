@@ -53,7 +53,7 @@ class SignValue:
     Имеет уникальный номер и вероятности проявления при наступлении и не наступлении гипотезы H.
     """
 
-    def __init__(self, sign_id: int = -1, p_pos: float = 0.5, p_neg: float = 0.5):
+    def __init__(self, sign_id: int = 0, p_pos: float = 0.5, p_neg: float = 0.5):
         self.sign_id: int = sign_id
         self._p_pos: float = p_pos
         self._p_neg: float = p_neg
@@ -187,21 +187,22 @@ class Hypothesis:
         idxs_to_del = []
         for s in self.signs:
             if s.sign_id == sign_to_del_id:
-                idxs_to_del.append(s.sign_id)
+                idxs_to_del.append(s)
         for i in idxs_to_del:
-            self.signs.pop(i)
+            self.signs.remove(i)
 
-    def get_sign_val_by_id(self, sign_id) -> Optional[SignValue]:
-        for sv in self.signs:
-            if sv.sign_id == sign_id:
-                return sv
-        return
+    def get_sign_val_by_id(self, id) -> SignValue:
+        for s in self.signs:
+            if s.sign_id == id:
+                return s
+        return None
 
-    def count_p(self, answer: bool, sign: SignValue, r=1.0, log=False):
-        self.p = sign.count_p_by_pos(self.p) if answer else sign.count_p_by_neg(self.p)
-        self.p *= r
-        if log:
-            print(f"Answer: {answer}, current P: {self.p}")
+    def count_p(self, answer: bool, sign: SignValue, r=1, log=False):
+        if sign:
+            self.p = sign.count_p_by_pos(self.p) if answer else sign.count_p_by_neg(self.p)
+            self.p *= r
+            if log:
+                print(f"Answer: {answer}, current P: {self.p}")
 
     def get_sign_ids(self):
         ids = []
@@ -217,17 +218,17 @@ class Hypothesis:
             arr.append([])
         attest_values_data = dict(zip(sign_ids, arr))
 
-        for sign_id in sign_ids:
-            attest_values_data[sign_id] = self.get_sign_val_by_id(sign_id).count_attest_value(self.p)
+        for id in sign_ids:
+            attest_values_data[id] = self.get_sign_val_by_id(id).count_attest_value(self.p)
             if log:
-                print(f"Att. value for question {sign_id + 1}: {attest_values_data[sign_id]}")
+                print(f"Att. value for question {id + 1}: {attest_values_data[id]}")
         print()
         return attest_values_data
 
     def max_attest_value_id(self, log=False) -> int:
         attest_values_data = self.count_attest_values(log)
-        max_attest_value_id = max(attest_values_data, key=attest_values_data.get)
-        return max_attest_value_id
+        max_av_id = max(attest_values_data, key=attest_values_data.get)
+        return max_av_id
 
     def count_p_max(self):
         for s in self.signs:
@@ -301,8 +302,9 @@ class CalculationProcess:
             return
         for i in self.signs_to_check:
             if i.id == del_sign_id:
-                idx = i.id
-        self.signs_to_check.pop(idx)
+                idx = i
+        if len(self.signs_to_check) > 0:
+            self.signs_to_check.remove(idx)
         print(f"Sign {del_sign_id} successfuly deleted")
 
     def update_signs(self, sign_to_del):
@@ -330,8 +332,9 @@ class CalculationProcess:
 
     def get_first_question(self):
         max_h_id = self.get_max_h()
-        print(f"{max_h_id}) {self.get_sign_by_id(max_h_id).question}, \n p - {self.h_list[max_h_id].p}")
-        # return self.get_h_by_id(max_h_id).max_attest_value_id(self.signs_to_check)
+        print(max_h_id)
+        print(self.get_sign_by_id(max_h_id))
+        # print(f"{max_h_id}) {self.get_sign_by_id(max_h_id).question}, \n p - {self.h_list[max_h_id].p}")
         return self.get_h_by_id(max_h_id).max_attest_value_id()
 
     def process_answer(self, answer: int) -> Tuple[bool, float]:
@@ -356,8 +359,7 @@ class CalculationProcess:
     def recount_ps(self, sign_id: int, answer: bool, r: float):
         for h in self.h_list:
             # print(f"Sign ID: {sign_id}")
-            # sign_value = h.get_sign_val_by_id(sign_id)
-            sign_value = h.get_link_by_sign_id(sign_id)
+            sign_value = h.get_sign_val_by_id(sign_id)
             # print(f"Sign value: {sign_value}")
             h.count_p(answer, sign_value, r)
 
@@ -428,6 +430,7 @@ class CalculationProcess:
         return self.stop
 
     def calculate(self):
+
         while not self.stop:
             question_id = self.get_first_question()
             print(f"Question id: {question_id}")

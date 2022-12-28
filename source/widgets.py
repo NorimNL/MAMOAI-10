@@ -352,8 +352,8 @@ class RunBaseDialog(QDialog):
     def next_step(self, value: int):
         question_id = self.calculator.get_first_question()
         self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(question_id).question)
-        result = self.calculator.step(value, question_id)
-        if result:
+        self.calculator.step(value, question_id)
+        if self.calculator.stop:
             self.no_button.setDisabled(True)
             self.p_no_button.setDisabled(True)
             self.no_know_button.setDisabled(True)
