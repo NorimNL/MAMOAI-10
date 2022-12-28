@@ -100,10 +100,14 @@ class SignValue:
     def set_p_pos(self, p):
         if 0 <= p <= 1:
             self.p_pos = p
+        else:
+            print("Incorrect p")
 
     def set_p_neg(self, p):
         if 0 <= p <= 1:
             self.p_neg = p
+        else:
+            print("Incorrect p")
 
     def count_p_by_pos(self, p: float):
         return (self.p_pos * p) / ((self.p_pos * p) + self.p_neg * (1 - p))
@@ -174,15 +178,19 @@ class Hypothesis:
 
     ###################################################################################################################
 
-    def set_p(self, p):
-        if 0 <= p <= 1:
-            self.p = p
-
-    def get_sign_val_by_id(self, id) -> Optional[SignValue]:
+    def del_sign(self, sign_to_del_id):
+        idxs_to_del = []
         for s in self.signs:
-            if s.id == id:
+            if s.sign_id == sign_to_del_id:
+                idxs_to_del.append(s.sign_id)
+        for i in idxs_to_del:
+            self.signs.pop(i)
+
+    def get_sign_val_by_id(self, sign_id) -> Optional[SignValue]:
+        for s in self.signs:
+            if s.sign_id == sign_id:
                 return s
-        return None
+        return
 
     def count_p(self, answer: bool, sign: SignValue, r=1, log=False):
         self.p = sign.count_p_by_pos(self.p) if answer else sign.count_p_by_neg(self.p)
@@ -204,24 +212,26 @@ class Hypothesis:
             arr.append([])
         attest_values_data = dict(zip(sign_ids, arr))
 
-        for sv_id in sign_ids:
-            attest_values_data[sv_id] = self.get_sign_val_by_id(sv_id).count_attest_value(self.p)
+        for sign_id in sign_ids:
+            attest_values_data[sign_id] = self.get_sign_val_by_id(sign_id).count_attest_value(self.p)
             if log:
-                print(f"Att. value for question {sv_id + 1}: {attest_values_data[sv_id]}")
+                print(f"Att. value for question {sign_id + 1}: {attest_values_data[sign_id]}")
+        print()
         return attest_values_data
 
     def max_attest_value_id(self, log=False) -> int:
         attest_values_data = self.count_attest_values(log)
-        return max(attest_values_data, key=attest_values_data.get)
+        max_attest_value_id = max(attest_values_data, key=attest_values_data.get)
+        return max_attest_value_id
 
     def count_p_max(self):
         for s in self.signs:
-            self.p_max = s.count_p_by_pos(self.p_max)
+            self.p_max = self.get_sign_val_by_id(s.sign_id).count_p_by_pos(self.p_max)
         return self.p_max
 
     def count_p_min(self):
         for s in self.signs:
-            self.p_min = s.count_p_by_neg(self.p_min)
+            self.p_min = self.get_sign_val_by_id(s.sign_id).count_p_by_neg(self.p_min)
         return self.p_min
 
 
@@ -253,36 +263,71 @@ class CalculationProcess:
         self.stop: bool = False
 
     def print_question(self, sign_id: int):
+        print(f"Signs to check len: {len(self.signs_to_check)}")
         for s in self.signs_to_check:
             if s.id == sign_id:
                 print(s.question)
 
     def get_answer(self):
         if self.is_console:
+            print("Нет (0) - Скорее нет (1) - Не знаю (2) - Скорее да (3) - Да (4)")
             return int(input("Your answer: "))
         else:
-            return 2
+            ANSWER = 2
+            return ANSWER
+
+    def get_h_by_id(self, h_id):
+        for h in self.h_list:
+            if h.id == h_id:
+                return h
+        return None
+
+    def get_sign_by_id(self, sign_id):
+        for s in self.signs_to_check:
+            if s.id == sign_id:
+                return s
+        return None
 
     def delete_sign(self, del_sign_id: int):
         idx = None
+        print(f"Sign to delete: {del_sign_id}")
         if not any(sign.id == del_sign_id for sign in self.signs_to_check):
-            print("Sign list doesn't contain sign with id {del_sign_id} \n")
+            print(f"Sign list doesn't contain sign with id {del_sign_id} \n")
             return
         for i in self.signs_to_check:
             if i.id == del_sign_id:
                 idx = i.id
         self.signs_to_check.pop(idx)
+        print(f"Sign {del_sign_id} successfuly deleted")
 
-    def get_max_h(self) -> str:
+    def update_signs(self, sign_to_del):
+        for h in self.h_list:
+            h.del_sign(sign_to_del)
+
+    def get_max_h(self, log=False) -> int:
         """
         Возвращает имя гипотезы с максимальной вероятностью
         """
-        h_names = [h.name for h in self.h_list if hasattr(h, 'name')]
+        h_ids = [h.id for h in self.h_list if hasattr(h, 'id')]
+        if log:
+            print(f"H_list: {h_ids}")
         ps = [h.p for h in self.h_list if hasattr(h, 'p')]
-        data = dict(zip(h_names, ps))
+        if log:
+            print(f"P_list: {ps}")
+        data = dict(zip(h_ids, ps))
+        if log:
+            print(f"Data:")
+        print(data)
+
         for k, v in data.items():
             if v == max(ps):
                 return k
+
+    def get_first_question(self):
+        max_h_id = self.get_max_h()
+        print(f"{max_h_id}) {self.get_sign_by_id(max_h_id).question}, \n p - {self.h_list[max_h_id].p}")
+        # return self.get_h_by_id(max_h_id).max_attest_value_id(self.signs_to_check)
+        return self.get_h_by_id(max_h_id).max_attest_value_id()
 
     def process_answer(self, answer: int) -> Tuple[bool, float]:
         """
@@ -305,17 +350,14 @@ class CalculationProcess:
 
     def recount_ps(self, sign_id: int, answer: bool, r: float):
         for h in self.h_list:
+            # print(f"Sign ID: {sign_id}")
             sign_value = h.get_sign_val_by_id(sign_id)
+            # print(f"Sign value: {sign_value}")
             h.count_p(answer, sign_value, r)
 
-    def compare_p_min_max(self) -> bool:
-        """
-        Сравниваем Pmax и Pmin всех гипотез.
-        Если любая Pmax меньше максимальной Pmin, то выкидывам гипотезу
-        Если любая Pmin больше минимальной Pmax, то выдаём гипотезу как ответ
-        и завершаем алгоритм
-        """
-        h_names = [h.name for h in self.h_list if hasattr(h, 'name')]
+    def get_minmax_data(self, log=False):
+        h_ids = [h.id for h in self.h_list if hasattr(h, 'id')]
+
         ps_min_list = []
         ps_max_list = []
 
@@ -323,27 +365,66 @@ class CalculationProcess:
             ps_min_list.append(h.count_p_min())
             ps_max_list.append(h.count_p_max())
 
-        ps_min = dict(zip(h_names, ps_min_list))
-        ps_max = dict(zip(h_names, ps_max_list))
+        ps_min_data = dict(zip(h_ids, ps_min_list))
+        ps_max_data = dict(zip(h_ids, ps_max_list))
+        # Максимальная Pmin
+        p_min = max(ps_min_list)
+        # Минимальная Pmax
+        p_max = min(ps_max_list)
+        if log:
+            print(f"Min. data: \n {ps_min_data} \n")
+            print(f"Max. data: \n {ps_max_data} \n")
+            print(f"Min. p: \n {p_min:.5f}")
+            print(f"Max. p: \n {p_max:.5f}")
 
-    def step(self, answer_id: int):
+        ids_to_delete = []
+        for h in self.h_list:
+            if log:
+                print(f"Pmax of {h.name} = {h.p_max:.5f}")
+            if h.p_max < p_min:
+                ids_to_delete.append(h.id)
+
+        ids_to_answer = []
+        for h in self.h_list:
+            if log:
+                print(f"Pmin of {h.name} = {h.p_min:.5f}")
+            if h.p_min < p_max:
+                ids_to_answer.append(h.id)
+
+        if log:
+            print(f"Ids to delete: {ids_to_delete}")
+            print(f"Ids to answer: {ids_to_answer}")
+
+        # return ps_min, ps_max, p_min, p_max, ids_to_delete, ids_to_answer
+        return ids_to_delete, ids_to_answer
+
+    def stop_or_del_hyp(self):
+        ids_to_delete, ids_to_answer = self.get_minmax_data()
+        if len(ids_to_answer) > 1:
+            return False
+        else:
+            return True
+
+    def step(self, answer_id: int, question_id):
         answer, r = self.process_answer(answer_id)
         # Удаляем заданный вопрос из списка
         if len(self.signs_to_check) == 0:
             self.stop = True
         # Считаем Р, умножаем Р на R ответа
-        self.recount_ps(r)
+        self.recount_ps(self.current_question, answer, r)
+        self.delete_sign(question_id)
+        self.update_signs(question_id)
+        self.get_max_h()
         # Считаем Pmax и Pmin для каждой гипотезы,
         # сравниваем Pmax и Pmin различных гипотез,
         # проверяем останов
-        self.stop = self.compare_p_min_max()
+        self.stop = self.stop_or_del_hyp()
         return self.stop
 
     def calculate(self):
-        stop = False
-
-        while not stop:
+        while not self.stop:
             question_id = self.get_first_question()
+            print(f"Question id: {question_id}")
             self.current_question = question_id
             # Выводим вопрос
             if self.is_console:
@@ -352,23 +433,12 @@ class CalculationProcess:
                 pass
             # Получаем ответ
             answer_id = self.get_answer()
-            self.delete_sign(question_id)
-            self.step(answer_id)
+            self.step(answer_id, question_id)
         if self.is_console:
-            print(self.get_max_h())
+            print(f"\nCongrats! \n{self.get_h_by_id(self.get_max_h()).description}")
         else:
             pass
         return self.get_max_h()
-
-    def get_h_by_id(self, h_id):
-        for h in self.h_list:
-            if h.id == h_id:
-                return h
-        return
-
-    def get_first_question(self):
-        max_h_id = self.get_max_h()
-        return self.get_h_by_id(max_h_id).max_attest_value_id()
 
 
 class KnowledgeBase:
@@ -582,4 +652,3 @@ if __name__ == '__main__':
     print(c)
     print(app)
     print(app.bases[0].last_path)
-

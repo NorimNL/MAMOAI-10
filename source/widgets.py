@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLab
     QLineEdit, QSizePolicy, QFileDialog, QTabWidget, QListWidgetItem, QTableWidget, QTableWidgetItem, QAction, QDialog
 
 from source.message import InfoMessage, QuestionMessage
-from source.model import AppModel, KnowledgeBase, Sign, Hypothesis
+from source.model import AppModel, KnowledgeBase, Sign, Hypothesis, CalculationProcess
 
 
 class AppMainWindow(QMainWindow):
@@ -341,8 +341,25 @@ class RunBaseDialog(QDialog):
         super().__init__()
         self.setWindowFlags(Qt.WindowSystemMenuHint | Qt.WindowTitleHint | Qt.WindowCloseButtonHint)
         self.kb: KnowledgeBase = kb
+        self.calculator = CalculationProcess(kb.hypos, kb.signs, False)
         self.setup_ui()
-        self.state_table.fill(self.kb.hypos)
+        self.setup_signals()
+        self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(self.calculator.current_question).question)
+        self.state_table.fill(self.calculator.h_list)
+
+    def next_step(self, value: int):
+        self.calculator.step(value, self.calculator.current_question)
+        print(self.calculator.current_question, type(self.calculator.current_question))  # 0
+        print(self.kb.get_sign_by_id(self.calculator.current_question))  # None
+        # self.question_label.setText('Вопрос: ' + self.kb.get_sign_by_id(self.calculator.current_question).question)
+        self.state_table.fill(self.calculator.h_list)
+
+    def setup_signals(self):
+        self.no_button.clicked.connect(lambda: self.next_step(0))
+        self.p_no_button.clicked.connect(lambda: self.next_step(1))
+        self.no_know_button.clicked.connect(lambda: self.next_step(2))
+        self.p_yes_button.clicked.connect(lambda: self.next_step(3))
+        self.yes_button.clicked.connect(lambda: self.next_step(4))
 
     def setup_ui(self):
         self.v_layout = QVBoxLayout(self)
